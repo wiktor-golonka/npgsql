@@ -67,6 +67,7 @@ namespace Npgsql
         [CanBeNull]
         NpgsqlConnector _connectorPreparedOn;
 
+        [CanBeNull]
         NpgsqlTransaction _transaction;
         string _commandText;
         int? _timeout;
@@ -150,10 +151,8 @@ namespace Npgsql
             get => _commandText;
             set
             {
-                if (value == null)
-                    throw new ArgumentNullException(nameof(value));
-
-                _commandText = value;
+                CheckOpenReader();
+                _commandText = value ?? throw new ArgumentNullException(nameof(value));
                 ResetExplicitPreparation();
                 // TODO: Technically should do this also if the parameter list (or type) changes
             }
@@ -208,6 +207,7 @@ namespace Npgsql
             get => _connection;
             set
             {
+                CheckOpenReader();
                 if (_connection == value)
                 {
                     return;
@@ -555,7 +555,8 @@ GROUP BY pg_proc.proargnames, pg_proc.proargtypes, pg_proc.proallargtypes, pg_pr
         /// Creates a server-side prepared statement on the PostgreSQL server.
         /// This will make repeated future executions of this command much faster.
         /// </summary>
-        public override void Prepare() => Prepare(false).GetAwaiter().GetResult();
+        public override void Prepare()
+            => Prepare(false, CancellationToken.None).GetAwaiter().GetResult();
 
         /// <summary>
         /// Creates a server-side prepared statement on the PostgreSQL server.
@@ -571,13 +572,15 @@ GROUP BY pg_proc.proargnames, pg_proc.proargtypes, pg_proc.proallargtypes, pg_pr
         public Task PrepareAsync(CancellationToken cancellationToken)
 #pragma warning restore CA1801 // Review unused parameters
         {
-            cancellationToken.ThrowIfCancellationRequested();
             using (NoSynchronizationContextScope.Enter())
-                return Prepare(true);
+                return Prepare(true, cancellationToken);
         }
 
-        Task Prepare(bool async)
+        Task Prepare(bool async, CancellationToken cancellationToken)
         {
+            if (_commandText == "")
+                throw new InvalidOperationException("CommandText must be set");
+
             var connector = CheckReadyAndGetConnector();
             for (var i = 0; i < Parameters.Count; i++)
                 if (!Parameters[i].IsTypeExplicitlySet)
@@ -603,12 +606,13 @@ GROUP BY pg_proc.proargnames, pg_proc.proargtypes, pg_proc.proallargtypes, pg_pr
             // It's possible the command was already prepared, or that presistent prepared statements were found for
             // all statements. Nothing to do here, move along.
             return needToPrepare
-                ? PrepareLong(connector, async)
+                ? PrepareLong(connector, async, cancellationToken)
                 : PGUtil.CompletedTask;
         }
 
-        async Task PrepareLong(NpgsqlConnector connector, bool async)
+        async Task PrepareLong(NpgsqlConnector connector, bool async, CancellationToken cancellationToken)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             using (connector.StartUserAction())
             {
                 var sendTask = SendPrepare(async);
@@ -795,6 +799,19 @@ GROUP BY pg_proc.proargnames, pg_proc.proargtypes, pg_proc.proallargtypes, pg_pr
 
         async ValueTask<NpgsqlDataReader> Execute(CommandBehavior behavior, bool async, CancellationToken cancellationToken)
         {
+            Debug.Assert(Connection != null);
+            Debug.Assert(Connection.Connector != null);
+
+            if (_commandText == "")
+                throw new InvalidOperationException("CommandText must be set");
+            if (_transaction == null)
+            {
+                if (Connection.Connector.InTransaction)
+                    throw new InvalidOperationException("A transaction is in progress, you must set NpgsqlCommand.Transaction");
+            }
+            else if (_transaction.Connection != Connection)
+                throw new InvalidOperationException("Transaction mismatch: transaction belongs to another connection");
+
             ValidateParameters();
             if ((behavior & CommandBehavior.SequentialAccess) != 0 && Parameters.HasOutputParameters)
                 throw new NotSupportedException("Output parameters aren't supported with SequentialAccess");
@@ -1119,7 +1136,6 @@ GROUP BY pg_proc.proargnames, pg_proc.proargtypes, pg_proc.proallargtypes, pg_pr
         /// <returns>A task representing the asynchronous operation, with the number of rows affected if known; -1 otherwise.</returns>
         public override Task<int> ExecuteNonQueryAsync(CancellationToken cancellationToken)
         {
-            cancellationToken.ThrowIfCancellationRequested();
             using (NoSynchronizationContextScope.Enter())
                 return ExecuteNonQuery(true, cancellationToken);
         }
@@ -1127,6 +1143,7 @@ GROUP BY pg_proc.proargnames, pg_proc.proargtypes, pg_proc.proallargtypes, pg_pr
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         async Task<int> ExecuteNonQuery(bool async, CancellationToken cancellationToken)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             var connector = CheckReadyAndGetConnector();
             using (connector.StartUserAction(this))
             using (cancellationToken.Register(cmd => ((NpgsqlCommand)cmd).Cancel(), this))
@@ -1160,7 +1177,6 @@ GROUP BY pg_proc.proargnames, pg_proc.proargtypes, pg_proc.proallargtypes, pg_pr
         [ItemCanBeNull]
         public override Task<object> ExecuteScalarAsync(CancellationToken cancellationToken)
         {
-            cancellationToken.ThrowIfCancellationRequested();
             using (NoSynchronizationContextScope.Enter())
                 return ExecuteScalar(true, cancellationToken).AsTask();
         }
@@ -1169,6 +1185,7 @@ GROUP BY pg_proc.proargnames, pg_proc.proargtypes, pg_proc.proallargtypes, pg_pr
         [ItemCanBeNull]
         async ValueTask<object> ExecuteScalar(bool async, CancellationToken cancellationToken)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             var connector = CheckReadyAndGetConnector();
             var behavior = CommandBehavior.SingleRow;
             if (!Parameters.HasOutputParameters)
@@ -1212,7 +1229,6 @@ GROUP BY pg_proc.proargnames, pg_proc.proargtypes, pg_proc.proallargtypes, pg_pr
         /// <returns></returns>
         protected override Task<DbDataReader> ExecuteDbDataReaderAsync(CommandBehavior behavior, CancellationToken cancellationToken)
         {
-            cancellationToken.ThrowIfCancellationRequested();
             using (NoSynchronizationContextScope.Enter())
                 return ExecuteDbDataReader(behavior, true, cancellationToken).AsTask();
         }
@@ -1230,6 +1246,7 @@ GROUP BY pg_proc.proargnames, pg_proc.proargtypes, pg_proc.proallargtypes, pg_pr
             connector.StartUserAction(this);
             try
             {
+                cancellationToken.ThrowIfCancellationRequested();
                 using (cancellationToken.Register(cmd => ((NpgsqlCommand)cmd).Cancel(), this))
                     return await Execute(behavior, async, cancellationToken);
             }
@@ -1382,6 +1399,12 @@ GROUP BY pg_proc.proargnames, pg_proc.proargtypes, pg_proc.proallargtypes, pg_pr
             if (Connection == null)
                 throw new InvalidOperationException("Connection property has not been initialized.");
             return Connection.CheckReadyAndGetConnector();
+        }
+
+        void CheckOpenReader()
+        {
+            if (_connection?.Connector?.CurrentReader != null)
+                throw new InvalidOperationException("Can't perform operation with open reader");
         }
 
         #endregion

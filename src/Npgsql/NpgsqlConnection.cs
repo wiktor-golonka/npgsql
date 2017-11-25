@@ -223,6 +223,9 @@ namespace Npgsql
 
             Log.Trace("Opening connection...");
 
+            if (_connectionString == "")
+                throw new InvalidOperationException("ConnectionString must be set");
+
             _wasBroken = false;
 
             try
