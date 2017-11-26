@@ -183,35 +183,36 @@ namespace Npgsql
             lock (pools)
             {
                 if (pools.TryGetValue(_connectionString, out _pool))
-                    Settings = _pool.Settings;  // Great, we already have a pool
+                {
+                    Settings = _pool.Settings; // Great, we already have a pool
+                    return;
+                }
+
+                // Connection string hasn't been seen before. Parse it.
+                Settings = new NpgsqlConnectionStringBuilder(_connectionString);
+
+                if (!_countersInitialized)
+                {
+                    _countersInitialized = true;
+                    Counters.Initialize(Settings.UsePerfCounters);
+                }
+
+                // Maybe pooling is off
+                if (!Settings.Pooling)
+                    return;
+
+                // Connstring may be equivalent to one that has already been seen though (e.g. different
+                // ordering). Have NpgsqlConnectionStringBuilder produce a canonical string representation
+                // and recheck.
+                var canonical = Settings.ConnectionString;
+                if (pools.TryGetValue(canonical, out _pool))
+                    pools[_connectionString] = _pool;
                 else
                 {
-                    // Connection string hasn't been seen before. Parse it.
-                    Settings = new NpgsqlConnectionStringBuilder(_connectionString);
-
-                    if (!_countersInitialized)
-                    {
-                        _countersInitialized = true;
-                        Counters.Initialize(Settings.UsePerfCounters);
-                    }
-
-                    // Maybe pooling is off
-                    if (Settings.Pooling)
-                    {
-                        // Connstring may be equivalent to one that has already been seen though (e.g. different
-                        // ordering). Have NpgsqlConnectionStringBuilder produce a canonical string representation
-                        // and recheck.
-                        var canonical = Settings.ConnectionString;
-                        if (pools.TryGetValue(canonical, out _pool))
-                            pools[_connectionString] = _pool;
-                        else
-                        {
-                            // Really unseen, need to create a new pool
-                            _pool = pools[_connectionString] = new ConnectorPool(Settings, canonical);
-                            if (_connectionString != canonical)
-                                pools[canonical] = _pool;
-                        }
-                    }
+                    // Really unseen, need to create a new pool
+                    _pool = pools[_connectionString] = new ConnectorPool(Settings, canonical);
+                    if (_connectionString != canonical)
+                        pools[canonical] = _pool;
                 }
             }
         }
@@ -515,7 +516,7 @@ namespace Npgsql
             using (connector.StartUserAction())
             {
                 if (connector.InTransaction)
-                    throw new NotSupportedException("Nested/Concurrent transactions aren't supported.");
+                    throw new InvalidOperationException("Nested/Concurrent transactions aren't supported.");
 
                 return new NpgsqlTransaction(this, level);
             }
