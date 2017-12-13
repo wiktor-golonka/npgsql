@@ -37,9 +37,9 @@ using NpgsqlTypes;
 namespace Npgsql.TypeHandlers
 {
     /// <summary>
-    /// Interface implemented by all concrete handlers which handle enums
+    /// Interface implemented by all concrete handlers which handle composites statically.
     /// </summary>
-    interface ICompositeHandler
+    interface IStaticCompositeHandler
     {
         /// <summary>
         /// The CLR type mapped to the PostgreSQL composite type.
@@ -48,7 +48,8 @@ namespace Npgsql.TypeHandlers
     }
 
     /// <summary>
-    /// Type handler for PostgreSQL composite types
+    /// Type handler for statically statically mapping PostgreSQL composite types to CLR
+    /// classes or structs.
     /// </summary>
     /// <remarks>
     /// http://www.postgresql.org/docs/current/static/rowtypes.html
@@ -60,7 +61,7 @@ namespace Npgsql.TypeHandlers
     /// * The column data encoded as binary
     /// </remarks>
     /// <typeparam name="T">the CLR type to map to the PostgreSQL composite type </typeparam>
-    class CompositeHandler<T> : NpgsqlTypeHandler<T>, ICompositeHandler where T : new()
+    class StaticCompositeHandler<T> : NpgsqlTypeHandler<T>, IStaticCompositeHandler where T : new()
     {
         readonly ConnectorTypeMapper _typeMapper;
         readonly INpgsqlNameTranslator _nameTranslator;
@@ -69,7 +70,7 @@ namespace Npgsql.TypeHandlers
 
         public Type CompositeType => typeof(T);
 
-        internal CompositeHandler(INpgsqlNameTranslator nameTranslator, ConnectorTypeMapper typeMapper)
+        internal StaticCompositeHandler(INpgsqlNameTranslator nameTranslator, ConnectorTypeMapper typeMapper)
         {
             _nameTranslator = nameTranslator;
 
@@ -85,7 +86,8 @@ namespace Npgsql.TypeHandlers
 
         public override async ValueTask<T> Read(NpgsqlReadBuffer buf, int len, bool async, FieldDescription fieldDescription = null)
         {
-            ResolveFieldsIfNeeded();
+            if (_members == null)
+                ResolveFields();
             Debug.Assert(_members != null);
 
             await buf.Ensure(4, async);
@@ -99,7 +101,7 @@ namespace Npgsql.TypeHandlers
             // If T is a struct, we have to box it here to properly set its fields below
             object result = new T();
 
-            foreach (var fieldDescriptor in _members)
+            foreach (var member in _members)
             {
                 await buf.Ensure(8, async);
                 buf.ReadInt32();  // read typeOID, not used
@@ -109,7 +111,7 @@ namespace Npgsql.TypeHandlers
                     // Null field, simply skip it and leave at default
                     continue;
                 }
-                fieldDescriptor.SetValue(result, await fieldDescriptor.Handler.ReadAsObject(buf, fieldLen, async));
+                member.SetValue(result, await member.Handler.ReadAsObject(buf, fieldLen, async));
             }
             return (T)result;
         }
@@ -120,7 +122,8 @@ namespace Npgsql.TypeHandlers
 
         public override int ValidateAndGetLength(T value, ref NpgsqlLengthCache lengthCache, NpgsqlParameter parameter)
         {
-            ResolveFieldsIfNeeded();
+            if (_members == null)
+                ResolveFields();
             Debug.Assert(_members != null);
 
             if (lengthCache == null)
@@ -168,11 +171,8 @@ namespace Npgsql.TypeHandlers
 
         #region Misc
 
-        void ResolveFieldsIfNeeded()
+        void ResolveFields()
         {
-            if (_members != null)
-                return;
-
             Debug.Assert(PostgresType is PostgresCompositeType, "CompositeHandler initialized with a non-composite type");
             var rawFields = ((PostgresCompositeType)PostgresType).Fields;
 
@@ -268,17 +268,17 @@ namespace Npgsql.TypeHandlers
     interface ICompositeTypeHandlerFactory { }
 #pragma warning restore CA1040    // Avoid empty interfaces
 
-    class CompositeTypeHandlerFactory<T> : NpgsqlTypeHandlerFactory<T>, ICompositeTypeHandlerFactory
+    class StaticCompositeTypeHandlerFactory<T> : NpgsqlTypeHandlerFactory<T>, ICompositeTypeHandlerFactory
         where T : new()
     {
         readonly INpgsqlNameTranslator _nameTranslator;
 
-        internal CompositeTypeHandlerFactory(INpgsqlNameTranslator nameTranslator)
+        internal StaticCompositeTypeHandlerFactory(INpgsqlNameTranslator nameTranslator)
         {
             _nameTranslator = nameTranslator;
         }
 
         protected override NpgsqlTypeHandler<T> Create(NpgsqlConnection conn)
-            => new CompositeHandler<T>(_nameTranslator, conn.Connector.TypeMapper);
+            => new StaticCompositeHandler<T>(_nameTranslator, conn.Connector.TypeMapper);
     }
 }
