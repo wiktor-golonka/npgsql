@@ -67,7 +67,12 @@ namespace Npgsql.Tests.Types
         [Test]
         public void AsDynamic()
         {
-            using (var conn = OpenConnection())
+            var csb = new NpgsqlConnectionStringBuilder(ConnectionString)
+            {
+                ApplicationName = nameof(AsDynamic),
+                Pooling = false
+            };
+            using (var conn = OpenConnection(csb))
             {
                 conn.ExecuteNonQuery("CREATE TYPE pg_temp.unmapped_comp AS (x int, some_text text)");
                 conn.ReloadTypes();
@@ -94,7 +99,12 @@ namespace Npgsql.Tests.Types
         [Test]
         public void PostgresType()
         {
-            using (var conn = OpenConnection())
+            var csb = new NpgsqlConnectionStringBuilder(ConnectionString)
+            {
+                ApplicationName = nameof(PostgresType),
+                Pooling = false
+            };
+            using (var conn = OpenConnection(csb))
             {
                 conn.ExecuteNonQuery("CREATE TYPE pg_temp.comp1 AS (x int, some_text text)");
                 conn.ExecuteNonQuery("CREATE TYPE pg_temp.comp2 AS (comp comp1, comps comp1[])");
@@ -235,7 +245,12 @@ namespace Npgsql.Tests.Types
         [Test, Parallelizable(ParallelScope.None)]
         public void LateMapping()
         {
-            using (var conn = OpenConnection())
+            var csb = new NpgsqlConnectionStringBuilder(ConnectionString)
+            {
+                ApplicationName = nameof(LateMapping),
+                Pooling = false
+            };
+            using (var conn = OpenConnection(csb))
             {
                 conn.ExecuteNonQuery("CREATE TYPE pg_temp.composite3 AS (x int, some_text text)");
                 conn.ReloadTypes();
@@ -266,9 +281,14 @@ namespace Npgsql.Tests.Types
         [Test]
         public void GlobalMapping()
         {
+            var csb = new NpgsqlConnectionStringBuilder(ConnectionString)
+            {
+                ApplicationName = nameof(LateMapping),
+                Pooling = false
+            };
             try
             {
-                using (var conn = OpenConnection())
+                using (var conn = OpenConnection(csb))
                 {
                     conn.ExecuteNonQuery("DROP TYPE IF EXISTS composite4");
                     conn.ExecuteNonQuery("CREATE TYPE composite4 AS (x int, some_text text)");
@@ -292,16 +312,15 @@ namespace Npgsql.Tests.Types
                 // Unmap
                 NpgsqlConnection.GlobalTypeMapper.UnmapComposite<SomeComposite>("composite4");
 
-                using (var conn = OpenConnection())
+                using (var conn = OpenConnection(csb))
                 {
                     // Composite should have been unmapped and so will return as dynamic
                     Assert.That(conn.ExecuteScalar("SELECT '(8, \"foo\")'::composite4"), Is.TypeOf<ExpandoObject>());
                 }
-
             }
             finally
             {
-                using (var conn = OpenConnection())
+                using (var conn = OpenConnection(csb))
                     conn.ExecuteNonQuery("DROP TYPE IF EXISTS composite4");
             }
         }
@@ -309,7 +328,12 @@ namespace Npgsql.Tests.Types
         [Test, Description("Tests a composite within another composite")]
         public void Recursive()
         {
-            using (var conn = OpenConnection())
+            var csb = new NpgsqlConnectionStringBuilder(ConnectionString)
+            {
+                ApplicationName = nameof(Recursive),
+                Pooling = false
+            };
+            using (var conn = OpenConnection(csb))
             {
                 conn.ExecuteNonQuery("CREATE TYPE pg_temp.composite_contained AS (x int, some_text text)");
                 conn.ExecuteNonQuery("CREATE TYPE pg_temp.composite_container AS (a int, contained composite_contained)");
@@ -341,7 +365,12 @@ namespace Npgsql.Tests.Types
         [Test]
         public void Struct()
         {
-            using (var conn = OpenConnection())
+            var csb = new NpgsqlConnectionStringBuilder(ConnectionString)
+            {
+                ApplicationName = nameof(Struct),
+                Pooling = false
+            };
+            using (var conn = OpenConnection(csb))
             {
                 conn.ExecuteNonQuery("CREATE TYPE pg_temp.composite_struct AS (x int, some_text text)");
                 conn.ReloadTypes();
@@ -365,7 +394,12 @@ namespace Npgsql.Tests.Types
         [Test]
         public void Array()
         {
-            using (var conn = OpenConnection())
+            var csb = new NpgsqlConnectionStringBuilder(ConnectionString)
+            {
+                ApplicationName = nameof(Array),
+                Pooling = false
+            };
+            using (var conn = OpenConnection(csb))
             {
                 conn.ExecuteNonQuery("CREATE TYPE pg_temp.composite5 AS (x int, some_text text)");
                 conn.ReloadTypes();
@@ -402,8 +436,13 @@ namespace Npgsql.Tests.Types
         [Test, IssueLink("https://github.com/npgsql/npgsql/issues/859")]
         public void NameTranslation()
         {
+            var csb = new NpgsqlConnectionStringBuilder(ConnectionString)
+            {
+                ApplicationName = nameof(LateMapping),
+                Pooling = false
+            };
             var expected = new NameTranslationComposite { Simple = 2, TwoWords = 3, SomeClrName = 4 };
-            using (var conn = OpenConnection())
+            using (var conn = OpenConnection(csb))
             {
                 conn.ExecuteNonQuery("CREATE TYPE pg_temp.name_translation_composite AS (simple int, two_words int, some_database_name int)");
                 conn.ReloadTypes();
@@ -445,7 +484,12 @@ CREATE TYPE address AS
     street TEXT,
     postal_code us_postal_code
 )";
-            using (var conn = OpenConnection())
+            var csb = new NpgsqlConnectionStringBuilder(ConnectionString)
+            {
+                ApplicationName = nameof(Domain),
+                Pooling = false
+            };
+            using (var conn = OpenConnection(csb))
             {
                 conn.ExecuteNonQuery(setupSql);
                 conn.ReloadTypes();
@@ -493,13 +537,13 @@ CREATE TYPE address AS
         [Test, IssueLink("https://github.com/npgsql/npgsql/issues/990")]
         public void TableAsComposite()
         {
-            var connectionString = new NpgsqlConnectionStringBuilder(ConnectionString)
+            var csb = new NpgsqlConnectionStringBuilder(ConnectionString)
             {
                 Pooling = false,
+                ApplicationName = nameof(TableAsComposite),
                 LoadTableComposites = true
-            }.ToString();
-
-            using (var conn = OpenConnection(connectionString))
+            };
+            using (var conn = OpenConnection(csb))
             {
                 conn.ExecuteNonQuery(
                     "CREATE TEMP TABLE table_as_composite (foo int);" +
@@ -514,13 +558,14 @@ CREATE TYPE address AS
         [Test, IssueLink("https://github.com/npgsql/npgsql/issues/1267")]
         public void TableAsCompositeWithDeleteColumns()
         {
-            var connectionString = new NpgsqlConnectionStringBuilder(ConnectionString)
+            var csb = new NpgsqlConnectionStringBuilder(ConnectionString)
             {
                 Pooling = false,
+                ApplicationName = nameof(TableAsCompositeWithDeleteColumns),
                 LoadTableComposites = true
-            }.ToString();
+            };
 
-            using (var conn = OpenConnection(connectionString))
+            using (var conn = OpenConnection(csb))
             {
                 conn.ExecuteNonQuery(@"
                     CREATE TEMP TABLE table_as_composite2 (foo int, bar int);
@@ -538,7 +583,12 @@ CREATE TYPE address AS
         [Test, IssueLink("https://github.com/npgsql/npgsql/issues/1125")]
         public void NullableProperty()
         {
-            using (var conn = OpenConnection())
+            var csb = new NpgsqlConnectionStringBuilder(ConnectionString)
+            {
+                Pooling = false,
+                ApplicationName = nameof(NullableProperty)
+            };
+            using (var conn = OpenConnection(csb))
             {
                 conn.ExecuteNonQuery("CREATE TYPE pg_temp.nullable_property_type AS (foo INT)");
                 conn.ReloadTypes();
@@ -607,7 +657,7 @@ CREATE TYPE address AS
         {
             var csb = new NpgsqlConnectionStringBuilder(ConnectionString)
             {
-                ApplicationName = nameof(WithSchema),  // Prevent backend type caching in TypeHandlerRegistry
+                ApplicationName = nameof(InDifferentSchemas),  // Prevent backend type caching in TypeHandlerRegistry
                 Pooling = false
             };
 
@@ -661,6 +711,7 @@ CREATE TYPE address AS
         {
             var csb = new NpgsqlConnectionStringBuilder(ConnectionString)
             {
+                Pooling = false,
                 ApplicationName = nameof(LocalMappingDontLeak)
             };
             NpgsqlConnection.GlobalTypeMapper.MapComposite<Composite2>("composite");
