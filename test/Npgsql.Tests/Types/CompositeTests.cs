@@ -151,10 +151,15 @@ namespace Npgsql.Tests.Types
                 {
                     conn.ReloadTypes();
 
-                    // Resolve type by NpgsqlDbType
+                    // Resolve type by DataTypeName
                     using (var cmd = new NpgsqlCommand("SELECT @p", conn))
                     {
-                        cmd.Parameters.Add(new NpgsqlParameter("p", NpgsqlDbType.Composite) { SpecificType = typeof(SomeComposite), Value = DBNull.Value });
+                        cmd.Parameters.Add(new NpgsqlParameter
+                        {
+                            ParameterName = "p",
+                            DataTypeName = "composite1",
+                            Value = DBNull.Value
+                        });
                         using (var reader = cmd.ExecuteReader())
                         {
                             reader.Read();
@@ -208,7 +213,13 @@ namespace Npgsql.Tests.Types
                 conn.TypeMapper.MapComposite<SomeComposite>("composite2");
                 using (var cmd = new NpgsqlCommand("SELECT @p", conn))
                 {
-                    cmd.Parameters.Add(new NpgsqlParameter("p", NpgsqlDbType.Composite) { SpecificType = typeof(SomeComposite), Value = DBNull.Value });
+                    cmd.Parameters.Add(new NpgsqlParameter
+                    {
+                        ParameterName = "p",
+                        DataTypeName = "composite2",
+                        Value = DBNull.Value
+                    });
+
                     using (var reader = cmd.ExecuteReader())
                     {
                         reader.Read();
@@ -259,9 +270,11 @@ namespace Npgsql.Tests.Types
                 var expected = new SomeComposite {x = 8, SomeText = "foo"};
                 using (var cmd = new NpgsqlCommand("SELECT @p1::composite3, @p2::composite3", conn))
                 {
-                    cmd.Parameters.Add(new NpgsqlParameter("p1", NpgsqlDbType.Composite) {
-                        Value = expected,
-                        SpecificType = typeof(SomeComposite)
+                    cmd.Parameters.Add(new NpgsqlParameter
+                    {
+                        ParameterName = "p1",
+                        DataTypeName = "composite3",
+                        Value = expected
                     });
                     cmd.Parameters.AddWithValue("p2", expected);
                     using (var reader = cmd.ExecuteReader())
@@ -412,9 +425,11 @@ namespace Npgsql.Tests.Types
 
                 using (var cmd = new NpgsqlCommand("SELECT @p1::composite5[], @p2::composite5[]", conn))
                 {
-                    cmd.Parameters.Add(new NpgsqlParameter("p1", NpgsqlDbType.Array | NpgsqlDbType.Composite) {
-                        Value = expected,
-                        SpecificType = typeof(SomeComposite)
+                    cmd.Parameters.Add(new NpgsqlParameter
+                    {
+                        ParameterName = "p1",
+                        DataTypeName = "_composite5",
+                        Value = expected
                     });
                     cmd.Parameters.AddWithValue("p2", expected); // Infer
                     using (var reader = cmd.ExecuteReader())
