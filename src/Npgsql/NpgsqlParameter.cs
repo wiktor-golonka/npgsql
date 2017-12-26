@@ -59,7 +59,6 @@ namespace Npgsql
         string _name = string.Empty;
         [CanBeNull]
         object _value;
-        object _npgsqlValue;
 
         /// <summary>
         /// Can be used to communicate a value from the validation phase to the writing phase.
@@ -301,7 +300,6 @@ namespace Npgsql
                 if (_value == null || value == null || _value.GetType() != value.GetType())
                     Handler = null;
                 _value = value;
-                _npgsqlValue = value;
                 ConvertedValue = null;
             }
         }
@@ -313,15 +311,11 @@ namespace Npgsql
         /// The default value is null.</value>
         [Category("Data")]
         [TypeConverter(typeof(StringConverter))]
+        [CanBeNull]
         public object NpgsqlValue
         {
-            get => _npgsqlValue;
-            set {
-                Handler = null;
-                _value = value;
-                _npgsqlValue = value;
-                ConvertedValue = null;
-            }
+            get => Value;
+            set => Value = value;
         }
 
         #endregion Value
@@ -623,7 +617,6 @@ namespace Npgsql
                 SourceVersion = SourceVersion,
 #endif
                 _value = _value,
-                _npgsqlValue = _npgsqlValue,
                 SourceColumnNullMapping = SourceColumnNullMapping,
             };
             return clone;
