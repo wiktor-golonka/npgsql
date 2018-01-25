@@ -127,11 +127,10 @@ namespace Npgsql
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        internal ValueTask<NpgsqlConnector> Allocate(NpgsqlConnection conn, NpgsqlTimeout timeout, bool async, CancellationToken cancellationToken)
+        internal bool TryAllocateFast(NpgsqlConnection conn, out NpgsqlConnector connector)
         {
             Counters.SoftConnectsPerSecond.Increment();
 
-            NpgsqlConnector connector;
             var len = _idle.Length;
             // We start scanning for an idle connector in "random" places in the array, to avoid
             // too much interlocked operations "contention" at the beginning.
@@ -140,7 +139,7 @@ namespace Npgsql
             {
                 connector = GetIdleConnector(i, conn);
                 if (connector != null)
-                    return new ValueTask<NpgsqlConnector>(connector);
+                    return true;
             }
 
             // We got to the end of the array but started in the middle, complete from the beginning.
@@ -148,21 +147,27 @@ namespace Npgsql
             {
                 connector = GetIdleConnector(i, conn);
                 if (connector != null)
-                    return new ValueTask<NpgsqlConnector>(connector);
+                    return true;
             }
 
+            connector = null;
+            return false;
+        }
+
+        internal Task<NpgsqlConnector> AllocateLong(NpgsqlConnection conn, NpgsqlTimeout timeout, bool async, CancellationToken cancellationToken)
+        {
             // No idle connector was found in the pool, we have to either create a new physical
             // connection or block if MaxPoolSize has been reached.
             while (true)
             {
                 var oldTotal = Total;
                 if (oldTotal >= _max)   // Pool is exhausted, wait for a close
-                    return new ValueTask<NpgsqlConnector>(WaitForConnector(timeout, conn, async));
+                    return WaitForConnector(timeout, conn, async);
                 if (Interlocked.CompareExchange(ref Total, oldTotal + 1, oldTotal) == oldTotal)
                 {
                     // We increased the total number of physical connections and are still under
                     // MaxPoolSize, so we can create a new physical connection and return it.
-                    return new ValueTask<NpgsqlConnector>(OpenConnector(conn, timeout, async, cancellationToken));
+                    return OpenConnector(conn, timeout, async, cancellationToken);
                 }
             }
 
@@ -202,8 +207,8 @@ namespace Npgsql
         /// Opens a new physical connection (connector).
         /// </summary>
         /// <remarks>
-        /// This method is distinct from <see cref="Allocate"/> because this method is async (slow)
-        /// whereas <see cref="Allocate"/> implements the fast path (isn't async).
+        /// This method is distinct from <see cref="AllocateLong"/> because this method is async (slow)
+        /// whereas <see cref="AllocateLong"/> isn't.
         /// </remarks>
         async Task<NpgsqlConnector> OpenConnector(NpgsqlConnection conn, NpgsqlTimeout timeout, bool async, CancellationToken cancellationToken)
         {
