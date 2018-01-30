@@ -30,6 +30,7 @@ using System.IO;
 using System.Net.Security;
 using System.Net.Sockets;
 using System.Reflection;
+using System.Runtime.CompilerServices;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using System.Threading;
@@ -1160,6 +1161,7 @@ namespace Npgsql
 
         #region State checks
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         void CheckConnectionOpen()
         {
             CheckDisposed();
@@ -1167,6 +1169,7 @@ namespace Npgsql
                 throw new InvalidOperationException("Connection is not open");
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         void CheckConnectionClosed()
         {
             CheckDisposed();
@@ -1174,12 +1177,14 @@ namespace Npgsql
                 throw new InvalidOperationException("Connection already open");
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         void CheckDisposed()
         {
             if (_disposed)
                 throw new ObjectDisposedException(typeof(NpgsqlConnection).Name);
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal NpgsqlConnector CheckReadyAndGetConnector()
         {
             CheckDisposed();
