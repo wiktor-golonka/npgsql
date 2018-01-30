@@ -61,12 +61,12 @@ namespace Npgsql
         bool _copyMode;
         internal Encoding TextEncoding { get; }
 
-        public int WriteSpaceLeft => Size - _writePosition;
+        public int WriteSpaceLeft => Size - WritePosition;
 
         readonly byte[] _buf;
         readonly Encoder _textEncoder;
 
-        int _writePosition;
+        internal int WritePosition { get; set; }
 
         BitConverterUnion _bitConverterUnion;
 
@@ -104,13 +104,13 @@ namespace Npgsql
                 // In copy mode, we write CopyData messages. The message code has already been
                 // written to the beginning of the buffer, but we need to go back and write the
                 // length.
-                if (_writePosition == 1)
+                if (WritePosition == 1)
                     return;
-                var pos = _writePosition;
-                _writePosition = 1;
+                var pos = WritePosition;
+                WritePosition = 1;
                 WriteInt32(pos - 1);
-                _writePosition = pos;
-            } else if (_writePosition == 0)
+                WritePosition = pos;
+            } else if (WritePosition == 0)
                 return;
 
             try
@@ -118,15 +118,15 @@ namespace Npgsql
                 if (async)
                 {
                     if (AwaitableSocket == null)  // SSL
-                        await Underlying.WriteAsync(_buf, 0, _writePosition);
+                        await Underlying.WriteAsync(_buf, 0, WritePosition);
                     else  // Non-SSL async I/O, optimized
                     {
-                        AwaitableSocket.SetBuffer(_buf, 0, _writePosition);
+                        AwaitableSocket.SetBuffer(_buf, 0, WritePosition);
                         await AwaitableSocket.SendAsync();
                     }
                 }
                 else  // Sync I/O
-                    Underlying.Write(_buf, 0, _writePosition);
+                    Underlying.Write(_buf, 0, WritePosition);
             }
             catch (Exception e)
             {
@@ -147,7 +147,7 @@ namespace Npgsql
                 throw new NpgsqlException("Exception while flushing stream", e);
             }
 
-            _writePosition = 0;
+            WritePosition = 0;
             if (CurrentCommand != null)
             {
                 CurrentCommand.FlushOccurred = true;
@@ -167,18 +167,18 @@ namespace Npgsql
             if (_copyMode)
             {
                 // Flush has already written the CopyData header, need to update the length
-                Debug.Assert(_writePosition == 5);
+                Debug.Assert(WritePosition == 5);
 
-                _writePosition = 1;
+                WritePosition = 1;
                 WriteInt32(count + 4);
-                _writePosition = 5;
+                WritePosition = 5;
                 _copyMode = false;
                 Flush();
                 _copyMode = true;
                 WriteCopyDataHeader();
             }
             else
-                Debug.Assert(_writePosition == 0);
+                Debug.Assert(WritePosition == 0);
 
             try
             {
@@ -198,49 +198,49 @@ namespace Npgsql
         public void WriteByte(byte b)
         {
             Debug.Assert(WriteSpaceLeft >= sizeof(byte));
-            _buf[_writePosition++] = b;
+            _buf[WritePosition++] = b;
         }
 
         public void WriteInt16(int i)
         {
             Debug.Assert(WriteSpaceLeft >= sizeof(short));
-            _buf[_writePosition++] = (byte)(i >> 8);
-            _buf[_writePosition++] = (byte)i;
+            _buf[WritePosition++] = (byte)(i >> 8);
+            _buf[WritePosition++] = (byte)i;
         }
 
         public void WriteUInt16(int i)
         {
             Debug.Assert(WriteSpaceLeft >= sizeof(ushort));
-            _buf[_writePosition++] = (byte)(i >> 8);
-            _buf[_writePosition++] = (byte)i;
+            _buf[WritePosition++] = (byte)(i >> 8);
+            _buf[WritePosition++] = (byte)i;
         }
 
         public void WriteInt32(int i)
         {
             Debug.Assert(WriteSpaceLeft >= sizeof(int));
-            var pos = _writePosition;
+            var pos = WritePosition;
             _buf[pos++] = (byte)(i >> 24);
             _buf[pos++] = (byte)(i >> 16);
             _buf[pos++] = (byte)(i >> 8);
             _buf[pos++] = (byte)i;
-            _writePosition = pos;
+            WritePosition = pos;
         }
 
         public void WriteUInt32(uint i)
         {
             Debug.Assert(WriteSpaceLeft >= sizeof(uint));
-            var pos = _writePosition;
+            var pos = WritePosition;
             _buf[pos++] = (byte)(i >> 24);
             _buf[pos++] = (byte)(i >> 16);
             _buf[pos++] = (byte)(i >> 8);
             _buf[pos++] = (byte)i;
-            _writePosition = pos;
+            WritePosition = pos;
         }
 
         public void WriteInt64(long i)
         {
             Debug.Assert(WriteSpaceLeft >= sizeof(long));
-            var pos = _writePosition;
+            var pos = WritePosition;
             _buf[pos++] = (byte)(i >> 56);
             _buf[pos++] = (byte)(i >> 48);
             _buf[pos++] = (byte)(i >> 40);
@@ -249,14 +249,14 @@ namespace Npgsql
             _buf[pos++] = (byte)(i >> 16);
             _buf[pos++] = (byte)(i >> 8);
             _buf[pos++] = (byte)i;
-            _writePosition = pos;
+            WritePosition = pos;
         }
 
         public void WriteSingle(float f)
         {
             Debug.Assert(WriteSpaceLeft >= sizeof(float));
             _bitConverterUnion.float4 = f;
-            var pos = _writePosition;
+            var pos = WritePosition;
             if (BitConverter.IsLittleEndian)
             {
                 _buf[pos++] = _bitConverterUnion.b3;
@@ -271,14 +271,14 @@ namespace Npgsql
                 _buf[pos++] = _bitConverterUnion.b2;
                 _buf[pos++] = _bitConverterUnion.b3;
             }
-            _writePosition = pos;
+            WritePosition = pos;
         }
 
         public void WriteDouble(double d)
         {
             Debug.Assert(WriteSpaceLeft >= sizeof(double));
             _bitConverterUnion.float8 = d;
-            var pos = _writePosition;
+            var pos = WritePosition;
             if (BitConverter.IsLittleEndian)
             {
                 _buf[pos++] = _bitConverterUnion.b7;
@@ -301,7 +301,7 @@ namespace Npgsql
                 _buf[pos++] = _bitConverterUnion.b6;
                 _buf[pos++] = _bitConverterUnion.b7;
             }
-            _writePosition = pos;
+            WritePosition = pos;
         }
 
         public Task WriteString(string s, int byteLen, bool async)
@@ -381,13 +381,13 @@ namespace Npgsql
         public void WriteString(string s, int len = 0)
         {
             Debug.Assert(TextEncoding.GetByteCount(s) <= WriteSpaceLeft);
-            _writePosition += TextEncoding.GetBytes(s, 0, len == 0 ? s.Length : len, _buf, _writePosition);
+            WritePosition += TextEncoding.GetBytes(s, 0, len == 0 ? s.Length : len, _buf, WritePosition);
         }
 
         internal void WriteChars(char[] chars, int offset, int len)
         {
             Debug.Assert(TextEncoding.GetByteCount(chars) <= WriteSpaceLeft);
-            _writePosition += TextEncoding.GetBytes(chars, offset, len == 0 ? chars.Length : len, _buf, _writePosition);
+            WritePosition += TextEncoding.GetBytes(chars, offset, len == 0 ? chars.Length : len, _buf, WritePosition);
         }
 
         public void WriteBytes(byte[] buf) => WriteBytes(buf, 0, buf.Length);
@@ -395,15 +395,15 @@ namespace Npgsql
         public void WriteBytes(byte[] buf, int offset, int count)
         {
             Debug.Assert(count <= WriteSpaceLeft);
-            Buffer.BlockCopy(buf, offset, _buf, _writePosition, count);
-            _writePosition += count;
+            Buffer.BlockCopy(buf, offset, _buf, WritePosition, count);
+            WritePosition += count;
         }
 
         public void WriteNullTerminatedString(string s)
         {
             Debug.Assert(s.All(c => c < 128), "Method only supports ASCII strings");
             Debug.Assert(WriteSpaceLeft >= s.Length + 1);
-            _writePosition += Encoding.ASCII.GetBytes(s, 0, s.Length, _buf, _writePosition);
+            WritePosition += Encoding.ASCII.GetBytes(s, 0, s.Length, _buf, WritePosition);
             WriteByte(0);
         }
 
@@ -421,9 +421,9 @@ namespace Npgsql
                 return;
             }
 
-            _textEncoder.Convert(chars, charIndex, charCount, _buf, _writePosition, WriteSpaceLeft,
+            _textEncoder.Convert(chars, charIndex, charCount, _buf, WritePosition, WriteSpaceLeft,
                                  flush, out charsUsed, out var bytesUsed, out completed);
-            _writePosition += bytesUsed;
+            WritePosition += bytesUsed;
         }
 
         internal unsafe void WriteStringChunked(string s, int charIndex, int charCount,
@@ -441,11 +441,11 @@ namespace Npgsql
             fixed (char* sPtr = s)
             fixed (byte* bufPtr = _buf)
             {
-                _textEncoder.Convert(sPtr + charIndex, charCount, bufPtr + _writePosition, WriteSpaceLeft,
+                _textEncoder.Convert(sPtr + charIndex, charCount, bufPtr + WritePosition, WriteSpaceLeft,
                                      flush, out charsUsed, out bytesUsed, out completed);
             }
 
-            _writePosition += bytesUsed;
+            WritePosition += bytesUsed;
         }
 
         #endregion
@@ -471,7 +471,7 @@ namespace Npgsql
         void WriteCopyDataHeader()
         {
             Debug.Assert(_copyMode);
-            Debug.Assert(_writePosition == 0);
+            Debug.Assert(WritePosition == 0);
             WriteByte((byte)BackendMessageCode.CopyData);
             // Leave space for the message length
             WriteInt32(0);
@@ -483,7 +483,7 @@ namespace Npgsql
 
         internal void Clear()
         {
-            _writePosition = 0;
+            WritePosition = 0;
         }
 
         /// <summary>
@@ -492,8 +492,8 @@ namespace Npgsql
         /// </summary>
         internal byte[] GetContents()
         {
-            var buf = new byte[_writePosition];
-            Array.Copy(_buf, buf, _writePosition);
+            var buf = new byte[WritePosition];
+            Array.Copy(_buf, buf, WritePosition);
             return buf;
         }
 
