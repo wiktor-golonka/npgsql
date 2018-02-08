@@ -168,8 +168,7 @@ namespace Npgsql
 
         void GetPoolAndSettings()
         {
-            var pools = PoolManager.Pools;
-            if (pools.TryGetValue(_connectionString, out _pool))
+            if (PoolManager.TryGetValue(_connectionString, out _pool))
             {
                 Settings = _pool.Settings;  // Great, we already have a pool
                 return;
@@ -195,9 +194,11 @@ namespace Npgsql
             // and recheck.
             var canonical = Settings.ConnectionString;
 
-            if (pools.TryGetValue(canonical, out _pool))
+            if (PoolManager.TryGetValue(canonical, out _pool))
             {
-                _pool = pools.GetOrAdd(_connectionString, _pool); // Assign the connection string the canonical pool. If someone beat us to it use whatever is there already.
+                // The pool was found, but only under the canonical key - we're using a different version
+                // for the first time. Map it via our own key for next time.
+                _pool = PoolManager.GetOrAdd(_connectionString, _pool);
                 return;
             }
                 
@@ -205,7 +206,7 @@ namespace Npgsql
             // The canonical pool is the 'base' pool so we need to set that up first. If someone beats us to it use what they put.
             // The connection string pool can either be added here or above, if it's added above we should just use that.
             var newPool = new ConnectorPool(Settings, canonical);
-            _pool = pools.GetOrAdd(canonical, newPool);
+            _pool = PoolManager.GetOrAdd(canonical, newPool);
 
             if (_pool == newPool)
             {
@@ -213,8 +214,8 @@ namespace Npgsql
                 // Avoids a race condition where multiple threads will create a pool but only one will be stored.
                 Counters.NumberOfActiveConnectionPools.Increment();
             }
-            
-            _pool = pools.GetOrAdd(_connectionString, _pool);
+
+            _pool = PoolManager.GetOrAdd(_connectionString, _pool);
         }
 
         Task Open(bool async, CancellationToken cancellationToken)
