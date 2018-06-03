@@ -11,15 +11,15 @@ addons:
 
 env:
   global:
-    - NPGSQL_TEST_DB: '"Host=localhost;Port=5433;Database=npgsql_tests;Username=npgsql_tests;Password=npgsql_tests"'
+    - NPGSQL_TEST_DB: '"Host=localhost;Port=5433;Database=travis;Username=travis;Password=travis"'
     - PGPORT: 5433
 
 before_script:
   - psql -c "ALTER USER travis WITH PASSWORD 'travis'"  # For PG 10 hack
-  - psql -c "CREATE USER npgsql_tests PASSWORD 'npgsql_tests' SUPERUSER"
-  - psql -c "CREATE DATABASE npgsql_tests OWNER npgsql_tests"
-  - psql -c "CREATE EXTENSION citext" npgsql_tests
-  - psql -c "CREATE EXTENSION postgis" npgsql_tests
+#  - psql -c "CREATE USER npgsql_tests PASSWORD 'npgsql_tests' SUPERUSER"
+#  - psql -c "CREATE DATABASE npgsql_tests OWNER npgsql_tests"
+  - psql -c "CREATE EXTENSION citext" travis
+  - psql -c "CREATE EXTENSION postgis" travis
   - dotnet restore -v Minimal Npgsql.sln
 script:
   - dotnet build "test/Npgsql.Tests" -c Debug -f netcoreapp2.1
