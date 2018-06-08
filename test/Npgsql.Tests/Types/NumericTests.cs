@@ -1,6 +1,7 @@
 ﻿using NpgsqlTypes;
 using NUnit.Framework;
 using System.Data;
+using System.Linq;
 
 namespace Npgsql.Tests.Types
 {
@@ -53,6 +54,11 @@ namespace Npgsql.Tests.Types
             new object[] { "-2.5::numeric(10,0)", -3M },
         };
 
+        static readonly object[] ReadWriteNullableCases = new[]
+        {
+            new object[] { "NULL::numeric", null },
+        }.Concat(ReadWriteCases).ToArray();
+
         [Test]
         [TestCaseSource(nameof(ReadWriteCases))]
         public void Read(string query, decimal expected)
@@ -81,6 +87,34 @@ namespace Npgsql.Tests.Types
         }
 
         [Test]
+        [TestCaseSource(nameof(ReadWriteNullableCases))]
+        public void ReadNullable(string query, decimal? expected)
+        {
+            using (var conn = OpenConnection())
+            using (var cmd = new NpgsqlCommand("SELECT " + query, conn))
+            {
+                Assert.That(cmd.ExecuteScalar<decimal?>(), Is.EqualTo(expected));
+            }
+        }
+
+        [Test]
+        [TestCaseSource(nameof(ReadWriteNullableCases))]
+        public void WriteNullable(string query, decimal? expected)
+        {
+            using (var conn = OpenConnection())
+            {
+                conn.ExecuteNonQuery("CREATE TEMP TABLE data (number numeric)");
+
+                conn.ExecuteNonQuery($"INSERT INTO data (number) VALUES ({query})");
+
+                using (var cmd = new NpgsqlCommand("SELECT number FROM data", conn))
+                {
+                    Assert.That(cmd.ExecuteScalar<decimal?>(), Is.EqualTo(expected));
+                }
+            }
+        }
+
+        [Test]
         public void Mapping()
         {
             using (var conn = OpenConnection())
@@ -94,7 +128,7 @@ namespace Npgsql.Tests.Types
                 using (var rdr = cmd.ExecuteRecord())
                     for (var i = 0; i < cmd.Parameters.Count; i++)
                     {
-                        Assert.That(rdr.GetFieldType(i), Is.EqualTo(typeof(decimal)));
+                        Assert.That(rdr.GetFieldType(i), Is.EqualTo(typeof(decimal?)));
                         Assert.That(rdr.GetDataTypeName(i), Is.EqualTo("numeric"));
                         Assert.That(rdr.GetValue(i), Is.EqualTo(8M));
                         Assert.That(rdr.GetProviderSpecificValue(i), Is.EqualTo(8M));
@@ -106,6 +140,62 @@ namespace Npgsql.Tests.Types
                         Assert.That(rdr.GetFieldValue<float>(i), Is.EqualTo(8.0f));
                         Assert.That(rdr.GetFieldValue<double>(i), Is.EqualTo(8.0d));
                     }
+            }
+        }
+
+        [Test]
+        public void MappingToNullable()
+        {
+            using (var conn = OpenConnection())
+            using (var cmd = new NpgsqlCommand("SELECT @p1, @p2, @p3, @p4", conn))
+            {
+                cmd.Parameters.Add(new NpgsqlParameter("p1", NpgsqlDbType.Numeric) { Value = 8m });
+                cmd.Parameters.Add(new NpgsqlParameter("p2", DbType.Decimal) { Value = 8m });
+                cmd.Parameters.Add(new NpgsqlParameter("p3", DbType.VarNumeric) { Value = 8m });
+                cmd.Parameters.Add(new NpgsqlParameter("p4", 8m));
+
+                using (var rdr = cmd.ExecuteRecord())
+                    for (var i = 0; i < cmd.Parameters.Count; i++)
+                    {
+                        Assert.That(rdr.GetFieldType(i), Is.EqualTo(typeof(decimal?)));
+                        Assert.That(rdr.GetDataTypeName(i), Is.EqualTo("numeric"));
+                        Assert.That(rdr.GetValue(i), Is.EqualTo(8m));
+                        Assert.That(rdr.GetProviderSpecificValue(i), Is.EqualTo(8m));
+                        Assert.That(rdr.GetFieldValue<decimal?>(i), Is.EqualTo(8m));
+                        Assert.That(rdr.GetFieldValue<byte?>(i), Is.EqualTo(8));
+                        Assert.That(rdr.GetFieldValue<short?>(i), Is.EqualTo(8));
+                        Assert.That(rdr.GetFieldValue<int?>(i), Is.EqualTo(8));
+                        Assert.That(rdr.GetFieldValue<long?>(i), Is.EqualTo(8));
+                        Assert.That(rdr.GetFieldValue<float?>(i), Is.EqualTo(8.0f));
+                        Assert.That(rdr.GetFieldValue<double?>(i), Is.EqualTo(8.0d));
+                    }
+            }
+        }
+
+        [Test]
+        public void MappingNull()
+        {
+            using (var conn = OpenConnection())
+            {
+                conn.ExecuteNonQuery("CREATE TEMP TABLE data (number numeric)");
+
+                conn.ExecuteNonQuery($"INSERT INTO data (number) VALUES (NULL)");
+
+                using (var cmd = new NpgsqlCommand("SELECT number FROM data", conn))
+                {
+                    using (var rdr = cmd.ExecuteRecord())
+                    {
+                        Assert.That(rdr.GetFieldType(0), Is.EqualTo(typeof(decimal?)));
+                        Assert.That(rdr.GetDataTypeName(0), Is.EqualTo("numeric"));
+                        Assert.That(rdr.GetFieldValue<decimal?>(0), Is.EqualTo(null));
+                        Assert.That(rdr.GetFieldValue<byte?>(0), Is.EqualTo(null));
+                        Assert.That(rdr.GetFieldValue<short?>(0), Is.EqualTo(null));
+                        Assert.That(rdr.GetFieldValue<int?>(0), Is.EqualTo(null));
+                        Assert.That(rdr.GetFieldValue<long?>(0), Is.EqualTo(null));
+                        Assert.That(rdr.GetFieldValue<float?>(0), Is.EqualTo(null));
+                        Assert.That(rdr.GetFieldValue<double?>(0), Is.EqualTo(null));
+                    }
+                }
             }
         }
     }

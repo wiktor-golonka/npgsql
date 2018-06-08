@@ -145,9 +145,13 @@ namespace Npgsql.TypeHandlers.NumericHandlers
     /// http://www.postgresql.org/docs/current/static/datatype-numeric.html
     /// </remarks>
     [TypeMapping("numeric", NpgsqlDbType.Numeric, new[] { DbType.Decimal, DbType.VarNumeric }, typeof(decimal), DbType.Decimal)]
-    class NumericHandler : NpgsqlSimpleTypeHandler<decimal>,
-        INpgsqlSimpleTypeHandler<byte>, INpgsqlSimpleTypeHandler<short>, INpgsqlSimpleTypeHandler<int>, INpgsqlSimpleTypeHandler<long>,
-        INpgsqlSimpleTypeHandler<float>, INpgsqlSimpleTypeHandler<double>
+    class NumericHandler : NpgsqlSimpleTypeHandler<decimal?>, INpgsqlSimpleTypeHandler<decimal>,
+                           INpgsqlSimpleTypeHandler<byte?>, INpgsqlSimpleTypeHandler<byte>,
+                           INpgsqlSimpleTypeHandler<short?>, INpgsqlSimpleTypeHandler<short>,
+                           INpgsqlSimpleTypeHandler<int?>, INpgsqlSimpleTypeHandler<int>,
+                           INpgsqlSimpleTypeHandler<long?>, INpgsqlSimpleTypeHandler<long>,
+                           INpgsqlSimpleTypeHandler<float?>, INpgsqlSimpleTypeHandler<float>,
+                           INpgsqlSimpleTypeHandler<double?>, INpgsqlSimpleTypeHandler<double>
     {
         const int MaxDecimalScale = 28;
 
@@ -181,7 +185,7 @@ namespace Npgsql.TypeHandlers.NumericHandlers
 
         #region Read
 
-        public override decimal Read(NpgsqlReadBuffer buf, int len, FieldDescription fieldDescription = null)
+        public override decimal? Read(NpgsqlReadBuffer buf, int len, FieldDescription fieldDescription = null)
         {
             var result = new DecimalRaw();
             var groups = buf.ReadInt16();
@@ -245,20 +249,41 @@ namespace Npgsql.TypeHandlers.NumericHandlers
             return Unsafe.As<DecimalRaw, decimal>(ref result);
         }
 
+        decimal INpgsqlSimpleTypeHandler<decimal>.Read(NpgsqlReadBuffer buf, int len, [CanBeNull] FieldDescription fieldDescription)
+            => (decimal)Read(buf, len, fieldDescription);
+
+        byte? INpgsqlSimpleTypeHandler<byte?>.Read(NpgsqlReadBuffer buf, int len, [CanBeNull] FieldDescription fieldDescription)
+            => (byte?)Read(buf, len, fieldDescription);
+
         byte INpgsqlSimpleTypeHandler<byte>.Read(NpgsqlReadBuffer buf, int len, [CanBeNull] FieldDescription fieldDescription)
             => (byte)Read(buf, len, fieldDescription);
+
+        short? INpgsqlSimpleTypeHandler<short?>.Read(NpgsqlReadBuffer buf, int len, [CanBeNull] FieldDescription fieldDescription)
+            => (short?)Read(buf, len, fieldDescription);
 
         short INpgsqlSimpleTypeHandler<short>.Read(NpgsqlReadBuffer buf, int len, [CanBeNull] FieldDescription fieldDescription)
             => (short)Read(buf, len, fieldDescription);
 
+        int? INpgsqlSimpleTypeHandler<int?>.Read(NpgsqlReadBuffer buf, int len, [CanBeNull] FieldDescription fieldDescription)
+            => (int?)Read(buf, len, fieldDescription);
+
         int INpgsqlSimpleTypeHandler<int>.Read(NpgsqlReadBuffer buf, int len, [CanBeNull] FieldDescription fieldDescription)
             => (int)Read(buf, len, fieldDescription);
+
+        long? INpgsqlSimpleTypeHandler<long?>.Read(NpgsqlReadBuffer buf, int len, [CanBeNull] FieldDescription fieldDescription)
+            => (long?)Read(buf, len, fieldDescription);
 
         long INpgsqlSimpleTypeHandler<long>.Read(NpgsqlReadBuffer buf, int len, [CanBeNull] FieldDescription fieldDescription)
             => (long)Read(buf, len, fieldDescription);
 
+        float? INpgsqlSimpleTypeHandler<float?>.Read(NpgsqlReadBuffer buf, int len, [CanBeNull] FieldDescription fieldDescription)
+            => (float?)Read(buf, len, fieldDescription);
+
         float INpgsqlSimpleTypeHandler<float>.Read(NpgsqlReadBuffer buf, int len, [CanBeNull] FieldDescription fieldDescription)
             => (float)Read(buf, len, fieldDescription);
+
+        double? INpgsqlSimpleTypeHandler<double?>.Read(NpgsqlReadBuffer buf, int len, [CanBeNull] FieldDescription fieldDescription)
+            => (double?)Read(buf, len, fieldDescription);
 
         double INpgsqlSimpleTypeHandler<double>.Read(NpgsqlReadBuffer buf, int len, [CanBeNull] FieldDescription fieldDescription)
             => (double)Read(buf, len, fieldDescription);
@@ -267,10 +292,16 @@ namespace Npgsql.TypeHandlers.NumericHandlers
 
         #region Write
 
-        public override int ValidateAndGetLength(decimal value, NpgsqlParameter parameter)
+        public override int ValidateAndGetLength(decimal? value, NpgsqlParameter parameter)
         {
+            if (value == null)
+            {
+                return 0;
+            }
+
+            var dec = value.Value;
             var groupCount = 0;
-            var raw = Unsafe.As<decimal, DecimalRaw>(ref value);
+            var raw = Unsafe.As<decimal, DecimalRaw>(ref dec);
             if (raw.Low != 0 || raw.Mid != 0 || raw.High != 0)
             {
                 uint remainder = default;
@@ -297,31 +328,58 @@ namespace Npgsql.TypeHandlers.NumericHandlers
             return 4 * sizeof(short) + groupCount * sizeof(short);
         }
 
+        public int ValidateAndGetLength(decimal value, NpgsqlParameter parameter)
+            => ValidateAndGetLength(new decimal?(value), parameter);
+
+        public int ValidateAndGetLength(short? value, NpgsqlParameter parameter)
+            => ValidateAndGetLength((decimal?)value, parameter);
+
         public int ValidateAndGetLength(short value, NpgsqlParameter parameter)
-            => ValidateAndGetLength((decimal)value, parameter);
+            => ValidateAndGetLength((decimal?)value, parameter);
+
+        public int ValidateAndGetLength(int? value, NpgsqlParameter parameter)
+            => ValidateAndGetLength((decimal?)value, parameter);
 
         public int ValidateAndGetLength(int value, NpgsqlParameter parameter)
-            => ValidateAndGetLength((decimal)value, parameter);
+            => ValidateAndGetLength((decimal?)value, parameter);
+
+        public int ValidateAndGetLength(long? value, NpgsqlParameter parameter)
+            => ValidateAndGetLength((decimal?)value, parameter);
 
         public int ValidateAndGetLength(long value, NpgsqlParameter parameter)
-            => ValidateAndGetLength((decimal)value, parameter);
+            => ValidateAndGetLength((decimal?)value, parameter);
+
+        public int ValidateAndGetLength(float? value, NpgsqlParameter parameter)
+            => ValidateAndGetLength((decimal?)value, parameter);
 
         public int ValidateAndGetLength(float value, NpgsqlParameter parameter)
-            => ValidateAndGetLength((decimal)value, parameter);
+            => ValidateAndGetLength((decimal?)value, parameter);
+
+        public int ValidateAndGetLength(double? value, NpgsqlParameter parameter)
+            => ValidateAndGetLength((decimal?)value, parameter);
 
         public int ValidateAndGetLength(double value, NpgsqlParameter parameter)
-            => ValidateAndGetLength((decimal)value, parameter);
+            => ValidateAndGetLength((decimal?)value, parameter);
+
+        public int ValidateAndGetLength(byte? value, NpgsqlParameter parameter)
+            => ValidateAndGetLength((decimal?)value, parameter);
 
         public int ValidateAndGetLength(byte value, NpgsqlParameter parameter)
-            => ValidateAndGetLength((decimal)value, parameter);
+            => ValidateAndGetLength((decimal?)value, parameter);
 
-        public override unsafe void Write(decimal value, NpgsqlWriteBuffer buf, NpgsqlParameter parameter)
+        public override unsafe void Write(decimal? value, NpgsqlWriteBuffer buf, NpgsqlParameter parameter)
         {
+            if (value == null)
+            {
+                return;
+            }
+
             var groupCount = 0;
             var groups = stackalloc short[MaxGroupCount];
             var weight = 0;
 
-            var raw = Unsafe.As<decimal, DecimalRaw>(ref value);
+            var dec = value.Value;
+            var raw = Unsafe.As<decimal, DecimalRaw>(ref dec);
             if (raw.Low != 0 || raw.Mid != 0 || raw.High != 0)
             {
                 var scale = raw.Scale;
@@ -341,7 +399,7 @@ namespace Npgsql.TypeHandlers.NumericHandlers
                         goto WriteGroups;
                     }
                 }
-                
+
                 while ((remainder = DecimalRaw.Divide(ref raw, MaxGroupSize)) == 0)
                     weight++;
 
@@ -361,23 +419,44 @@ namespace Npgsql.TypeHandlers.NumericHandlers
                 buf.WriteInt16(groups[--groupCount]);
         }
 
+        public void Write(decimal value, NpgsqlWriteBuffer buf, NpgsqlParameter parameter)
+            => Write((decimal?)value, buf, parameter);
+
+        public void Write(short? value, NpgsqlWriteBuffer buf, NpgsqlParameter parameter)
+            => Write((decimal?)value, buf, parameter);
+
         public void Write(short value, NpgsqlWriteBuffer buf, NpgsqlParameter parameter)
-            => Write((decimal)value, buf, parameter);
+            => Write((decimal?)value, buf, parameter);
+
+        public void Write(int? value, NpgsqlWriteBuffer buf, NpgsqlParameter parameter)
+            => Write((decimal?)value, buf, parameter);
 
         public void Write(int value, NpgsqlWriteBuffer buf, NpgsqlParameter parameter)
-            => Write((decimal)value, buf, parameter);
+            => Write((decimal?)value, buf, parameter);
+
+        public void Write(long? value, NpgsqlWriteBuffer buf, NpgsqlParameter parameter)
+            => Write((decimal?)value, buf, parameter);
 
         public void Write(long value, NpgsqlWriteBuffer buf, NpgsqlParameter parameter)
-            => Write((decimal)value, buf, parameter);
+            => Write((decimal?)value, buf, parameter);
+
+        public void Write(byte? value, NpgsqlWriteBuffer buf, NpgsqlParameter parameter)
+            => Write((decimal?)value, buf, parameter);
 
         public void Write(byte value, NpgsqlWriteBuffer buf, NpgsqlParameter parameter)
-            => Write((decimal)value, buf, parameter);
+            => Write((decimal?)value, buf, parameter);
+
+        public void Write(float? value, NpgsqlWriteBuffer buf, NpgsqlParameter parameter)
+            => Write((decimal?)value, buf, parameter);
 
         public void Write(float value, NpgsqlWriteBuffer buf, NpgsqlParameter parameter)
-            => Write((decimal)value, buf, parameter);
+            => Write((decimal?)value, buf, parameter);
+
+        public void Write(double? value, NpgsqlWriteBuffer buf, NpgsqlParameter parameter)
+            => Write((decimal?)value, buf, parameter);
 
         public void Write(double value, NpgsqlWriteBuffer buf, NpgsqlParameter parameter)
-            => Write((decimal)value, buf, parameter);
+            => Write((decimal?)value, buf, parameter);
 
         #endregion Write
     }
